@@ -30,8 +30,9 @@ def train(epoch):
     train_loss = 0
     correct = 0
     total = 0
-    for batch_idx, (normal_inputs, anomaly_inputs) in enumerate(zip(normal_train_loader, anomaly_train_loader)):
+    for batch_idx, (normal_inputs, normal_ids, anomaly_inputs, anomaly_ids) in enumerate(zip(normal_train_loader, anomaly_train_loader)):
         inputs = torch.cat([anomaly_inputs, normal_inputs], dim=1)
+        input_ids = torch.cat([normal_ids, anomaly_ids], dim=1)
         batch_size = inputs.shape[0]
         inputs = inputs.view(-1, inputs.size(-1)).to(device)
         outputs = model(inputs)

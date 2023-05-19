@@ -4,14 +4,32 @@ import numpy as np
 import os
 import random
 
+class_ids = {
+    "Abuse": 1,
+    "Arrest": 2,
+    "Arson": 3,
+    "Assault": 4,
+    "Burglary": 5,
+    "Explosion": 6,
+    "Fighting": 7,
+    "Normal_Videos_event": 8,
+    "RoadAccidents": 9,
+    "Robbery": 10,
+    "Shooting": 11,
+    "Shoplifting": 12,
+    "Stealing": 13,
+    "Vandalism": 14,
+}
+
 class Normal_Loader(Dataset):
     """
     is_train = 1 <- train, 0 <- test
     """
-    def __init__(self, is_train=1, path='/workspace/DATA/UCF-Crime/'):
+    def __init__(self, is_train=1, path='./DATA/UCF-Crime/'):
         super(Normal_Loader, self).__init__()
         self.is_train = is_train
         self.path = path
+        self.class_ids = class_ids
         if self.is_train == 1:
             data_list = os.path.join(path, 'train_normal.txt')
             with open(data_list, 'r') as f:
@@ -30,7 +48,8 @@ class Normal_Loader(Dataset):
             rgb_npy = np.load(os.path.join(self.path+'all_rgbs', self.data_list[idx][:-1]+'.npy'))
             flow_npy = np.load(os.path.join(self.path+'all_flows', self.data_list[idx][:-1]+'.npy'))
             concat_npy = np.concatenate([rgb_npy, flow_npy], axis=1)
-            return concat_npy
+            class_id = self.class_ids[self.data_list[idx][:-1].split("/")[0]]
+            return concat_npy, class_id
         else:
             name, frames, gts = self.data_list[idx].split(' ')[0], int(self.data_list[idx].split(' ')[1]), int(self.data_list[idx].split(' ')[2][:-1])
             rgb_npy = np.load(os.path.join(self.path+'all_rgbs', name + '.npy'))
@@ -42,10 +61,11 @@ class Anomaly_Loader(Dataset):
     """
     is_train = 1 <- train, 0 <- test
     """
-    def __init__(self, is_train=1, path='/workspace/DATA/UCF-Crime/'):
+    def __init__(self, is_train=1, path='./DATA/UCF-Crime/'):
         super(Anomaly_Loader, self).__init__()
         self.is_train = is_train
         self.path = path
+        self.class_ids = class_ids
         if self.is_train == 1:
             data_list = os.path.join(path, 'train_anomaly.txt')
             with open(data_list, 'r') as f:
@@ -63,7 +83,8 @@ class Anomaly_Loader(Dataset):
             rgb_npy = np.load(os.path.join(self.path+'all_rgbs', self.data_list[idx][:-1]+'.npy'))
             flow_npy = np.load(os.path.join(self.path+'all_flows', self.data_list[idx][:-1]+'.npy'))
             concat_npy = np.concatenate([rgb_npy, flow_npy], axis=1)
-            return concat_npy
+            class_id = self.class_ids[self.data_list[idx][:-1].split("/")[0]]
+            return concat_npy, class_id
         else:
             name, frames, gts = self.data_list[idx].split('|')[0], int(self.data_list[idx].split('|')[1]), self.data_list[idx].split('|')[2][1:-2].split(',')
             gts = [int(i) for i in gts]

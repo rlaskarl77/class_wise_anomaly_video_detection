@@ -1,0 +1,13 @@
+# dataset
+DATA/ShanghaiTech
+DATA/UCF-Crime
+
+# model weights
+*.pth
+*.pt
+
+# training logs
+*.log
+
+# original code
+original_code/
