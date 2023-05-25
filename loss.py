@@ -31,3 +31,14 @@ def MIL(y_pred, batch_size, is_transformer=0):
     loss = (loss+sparsity+smooth)/batch_size
 
     return loss
+
+def weaksup_intra_video_loss(amc_score, batch_size, k = 1, margin=0.5):
+    # assert len(pred.size()) == 2
+    pred = amc_score.view(-1, 32)
+    abnorm_pred = pred[0:batch_size, :]
+    abnorm_min = abnorm_pred.topk(k=k, dim=-1, largest=False)[0][:, -1]
+    abnorm_max = abnorm_pred.topk(k=k, dim=-1)[0][:, -1]
+
+    minmax_diff = (-abnorm_max + abnorm_min).view(-1)
+    hinge_loss = torch.max(torch.zeros_like(minmax_diff), margin + minmax_diff).sum()
+    return hinge_loss

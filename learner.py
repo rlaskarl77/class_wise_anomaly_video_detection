@@ -2,10 +2,8 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-
-
 class Learner(nn.Module):
-    def __init__(self, input_dim=2048, drop_p=0.0):
+    def __init__(self, input_dim=2048, drop_p=0.0, mode='amc'):
         super(Learner, self).__init__()
         self.classifier = nn.Sequential(
             nn.Linear(input_dim, 512),
@@ -24,6 +22,8 @@ class Learner(nn.Module):
         for i, param in enumerate(self.classifier.parameters()):
             self.vars.append(param)
 
+        self.mode = mode
+
     def weight_init(self):
         for layer in self.classifier:
             if type(layer) == nn.Linear:
@@ -37,8 +37,11 @@ class Learner(nn.Module):
         x = F.dropout(x, self.drop_p, training=self.training)
         x = F.linear(x, vars[2], vars[3])
         x = F.dropout(x, self.drop_p, training=self.training)
+        fea = x
         x = F.linear(x, vars[4], vars[5])
-        return torch.sigmoid(x)
+
+
+        return torch.sigmoid(x), fea
 
     def parameters(self):
         """
