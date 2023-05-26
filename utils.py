@@ -1,5 +1,6 @@
 import torch
 
+
 def get_pairwise_distance(score, const=1e-0, L1=True):
     if L1:
         pair_wise_dist = torch.norm(score.unsqueeze(1) - score.unsqueeze(2), p=1, dim=-1)
@@ -7,7 +8,8 @@ def get_pairwise_distance(score, const=1e-0, L1=True):
         pair_wise_dist = torch.norm(score.unsqueeze(1) - score.unsqueeze(2), p=2, dim=-1)
     return torch.exp(-pair_wise_dist / const)
 
-def get_absorbtion_time(adj, score):
+
+def get_absorbtion_time(adj, score, class_wise=False):
     sum_weights = adj.sum(-1)
     score = score.view(-1, sum_weights.size(-1))
 
@@ -20,4 +22,21 @@ def get_absorbtion_time(adj, score):
     except:
         f = torch.pinverse(eye - adj)
     abs_time = f.sum(dim=-1)
+    
+    if class_wise:
+        return abs_time, f
     return abs_time
+
+
+def get_amc_score(det_score, fea, mean):
+    adj_amc = get_pairwise_distance(fea, const=1e-1, L1=False)
+    absorb_time = get_absorbtion_time(adj_amc, det_score)
+    if mean is None:
+        return -absorb_time
+    elif mean == 0:
+        mean = absorb_time.detach().mean()
+    else:
+        alpha = 0.9
+        mean = alpha * mean + (1 - alpha) * absorb_time.detach().mean()
+    amc_score = -(absorb_time - mean)
+    return amc_score, mean

@@ -32,6 +32,7 @@ def MIL(y_pred, batch_size, is_transformer=0):
 
     return loss
 
+
 def weaksup_intra_video_loss(amc_score, batch_size, k = 1, margin=0.5):
     # assert len(pred.size()) == 2
     pred = amc_score.view(-1, 32)
