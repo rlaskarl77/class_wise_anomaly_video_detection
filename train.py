@@ -59,7 +59,7 @@ def train(opt, device):
     if opt.optimizer == 'Adam':
         optimizer = torch.optim.Adam(model.parameters(), lr= opt.lr, betas=(opt.momentum, 0.999))  # adjust beta1 to momentum
     elif opt.optimizer == 'AdamW':
-        optimizer = torch.optim.AdamW(model.parameters(), lr= opt.lr, betas=(opt.momentum, 0.999), weight_decay=0.0)
+        optimizer = torch.optim.AdamW(model.parameters(), lr= opt.lr, betas=(opt.momentum, 0.999))
     elif opt.optimizer == 'RMSProp':
         optimizer = torch.optim.RMSprop(model.parameters(), lr= opt.lr, momentum=opt.momentum)
     elif opt.optimizer == 'SGD':
@@ -133,31 +133,33 @@ def train(opt, device):
             
         scheduler.step()
         epoch_loss =  train_loss / len(normal_train_loader)
-    
-        auc = validate.run(opt, model, normal_test_loader, anomaly_test_loader)
         
-        if auc > best_auc:
-            best_auc = auc
-                
         if RANK in {-1, 0}:
+            
+            auc = validate.run(opt, model, normal_test_loader, anomaly_test_loader)
+            
+            if auc > best_auc:
+                best_auc = auc
 
-            # Save model
-            ckpt = {
-                'epoch': epoch,
-                'best_auc': best_auc,
-                'model': deepcopy(de_parallel(model)),
-                'optimizer': optimizer.state_dict(),
-                'opt': vars(opt),
-                'date': datetime.now().isoformat()}
+                # Save model
+                ckpt = {
+                    'epoch': epoch,
+                    'best_auc': best_auc,
+                    'model': deepcopy(de_parallel(model)),
+                    'optimizer': optimizer.state_dict(),
+                    'opt': vars(opt),
+                    'date': datetime.now().isoformat()}
 
-            # Save last, best and delete
-            torch.save(ckpt, last)
-            if best_auc == auc:
-                torch.save(ckpt, best)
-            del ckpt
+                # Save last, best and delete
+                torch.save(ckpt, last)
+                if best_auc == auc:
+                    torch.save(ckpt, best)
+                del ckpt
                 
-        LOGGER.info('Epoch: {}/{}  ||  loss = {},  auc = {}'.format(epoch, opt.epoch, epoch_loss, auc))
-    LOGGER.info("Best AUC is {}".format(best_auc))
+            LOGGER.info('Epoch: {}/{}  ||  loss = {},  auc = {}'.format(epoch, opt.epoch, epoch_loss, auc))
+            
+    if RANK in {-1, 0}:
+        LOGGER.info("Best AUC is {}".format(best_auc))
 
     torch.cuda.empty_cache()
     return best_auc
