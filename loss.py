@@ -34,51 +34,31 @@ def MIL(y_pred, batch_size, is_transformer=0):
     return loss
 
 
-def weaksup_intra_video_loss(amc_score, batch_size, k=1, margin=0.5):
+def weaksup_intra_video_loss(amc_score, batch_size, k=1, margin=0.5, abs_prob=None):
     # assert len(pred.size()) == 2
     pred = amc_score.view(-1, 32)
     abnorm_pred = pred[:batch_size, :]
     normal_pred = pred[batch_size:, :]
-    norm_min, min_idx = normal_pred.topk(k=k, dim=-1, largest=False)
-    abnorm_max, max_idx = abnorm_pred.topk(k=k, dim=-1)
-
-    minmax_diff = (-abnorm_max + norm_min).view(-1)
-    hinge_loss = torch.max(torch.zeros_like(minmax_diff), margin + minmax_diff).sum()
     
-    return hinge_loss, min_idx, max_idx
-
-
-def weaksup_intra_video_loss2(amc_score, abs_prob, anomaly_ids, batch_size, k = 1, margin=0.5):
-    pred = amc_score.view(-1, 32)
-    abnorm_pred = pred[0:batch_size, :]
-    abnorm_abs_prob, norm_abs_prob = abs_prob.chunk(2)
-
     abnorm_min, abnorm_min_idx = abnorm_pred.topk(k=k, dim=-1, largest=False)
     abnorm_min = abnorm_min[:, -1]
 
     abnorm_max, abnorm_max_idx = abnorm_pred.topk(k=k, dim=-1)
     abnorm_max = abnorm_max[:, -1]
 
+
     minmax_diff = (-abnorm_max + abnorm_min).view(-1)
     hinge_loss = torch.max(torch.zeros_like(minmax_diff), margin + minmax_diff).sum()
-
-    # abnorm prob cross-entropy
-    num_classes = abs_prob.size(2)
-    abnorm_min_idx = abnorm_min_idx.unsqueeze(2).repeat(1,1,num_classes)
-    abnorm_max_idx = abnorm_max_idx.unsqueeze(2).repeat(1,1,num_classes)
-    abnorm_abs_prob_min = abnorm_abs_prob.gather(1, abnorm_min_idx).squeeze()
-    abnorm_abs_prob_max = abnorm_abs_prob.gather(1, abnorm_max_idx).squeeze()
-
-    norm_abs_prob = norm_abs_prob.view(-1, num_classes)
-
-    ace_loss = 0.1*F.nll_loss(abnorm_abs_prob_max.log(), anomaly_ids) - 0.1* entropy(abnorm_abs_prob_min)#- 0.05*entropy(norm_abs_prob)
-    # entropy_diff = - entropy(abnorm_abs_prob_min, mean=False) + entropy(abnorm_abs_prob_max, mean=False)
-    # ace_loss = 0.1*torch.max(torch.zeros_like(minmax_diff), margin + entropy_diff).sum() + 0.1*F.nll_loss(abnorm_abs_prob_max.log(), anomaly_ids)
-
-    return hinge_loss + ace_loss
-
-def entropy(p, mean=True):
-    ent = - p * (p+1e-5).log()
-    if not mean:
-        return ent.sum(dim=1)
-    return ent.sum(dim=1).mean()
+    
+    if abs_prob is not None:
+        # abnorm prob cross-entropy
+        num_classes = abs_prob.size(2)
+        abnorm_abs_prob, norm_abs_prob = abs_prob.chunk(2)
+        abnorm_max_idx = abnorm_max_idx.unsqueeze(2).repeat(1,1,num_classes)
+        abnorm_min_idx = abnorm_min_idx.unsqueeze(2).repeat(1,1,num_classes)
+        abnorm_abs_prob_max = abnorm_abs_prob.gather(1, abnorm_max_idx).squeeze()
+        abnorm_abs_prob_min = abnorm_abs_prob.gather(1, abnorm_min_idx).squeeze()
+        
+        return hinge_loss, abnorm_abs_prob_max, abnorm_abs_prob_min
+    
+    return hinge_loss, None, None

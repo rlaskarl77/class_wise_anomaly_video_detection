@@ -17,25 +17,27 @@ class Learner(nn.Module):
         
         self.body = nn.Sequential(
             nn.Linear(input_dim, 512),
+            nn.BatchNorm1d(512),
             nn.ReLU(),
             nn.Dropout(drop_p),
             nn.Linear(512, 32),
+            nn.BatchNorm1d(32),
             nn.ReLU(),
         )
         
         self.classifier = nn.Sequential(
-            nn.Linear(32, 32),
-            nn.SiLU(),
+            # nn.Linear(32, 32),
+            # nn.SiLU(),
             nn.Linear(32, 1),
             nn.Sigmoid(),
         )
         
         if self.mode=='ace':
             self.cls_head = nn.Sequential(
-                nn.Linear(32, 32),
-                nn.SiLU(),
+                # nn.Linear(32, 32),
+                # nn.SiLU(),
                 nn.Linear(32, self.num_classes),
-                nn.Sigmoid(),
+                nn.Softmax(dim=-1),
             )
         
         self.weight_init()
@@ -59,11 +61,14 @@ class Learner(nn.Module):
     def forward(self, x):
         x = self.body(x)
         fea = x
-        x = self.classifier(x)
         
         if self.mode=='ace':
-            cls_probs = self.cls_head(fea)
+            cls_probs = self.cls_head(x)
+            x = self.classifier(x)
+            
             return x, fea, cls_probs
+        
+        x = self.classifier(x)
 
         return x, fea
     

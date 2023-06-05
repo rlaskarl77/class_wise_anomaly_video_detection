@@ -85,7 +85,7 @@ def train(opt, device):
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 50, 75, 100, 125], gamma=0.5)
     scheduler.last_epoch = last_epoch - 1
     criterion = MIL
-    class_criterion = nn.BCELoss()
+    
     nb = len(normal_train_loader)
 
     for epoch in range(last_epoch, epochs):
@@ -104,6 +104,7 @@ def train(opt, device):
             
             inputs = torch.cat([anomaly_inputs, normal_inputs], dim=1)
             input_ids = torch.cat([normal_ids, anomaly_ids], dim=0)
+            anomaly_ids = anomaly_ids.to(device)
 
             batch_size = inputs.shape[0]
             inputs = inputs.view(-1, inputs.size(-1)).to(device)
@@ -131,31 +132,13 @@ def train(opt, device):
 
                 amc_score, mean, abs_prob = get_amc_score(outputs, fea, mean, class_logits)
                 
-                amc_loss, min_idx, max_idx = weaksup_intra_video_loss(amc_score, batch_size, margin=0.5)
-                max_indices = max_idx.unsqueeze(-1).detach().tile(1,1,opt.classes)
+                amc_loss, abnorm_prob, norm_prob = weaksup_intra_video_loss(amc_score, batch_size, margin=0.5, abs_prob=abs_prob)
                 
-                max_logits = torch.gather(
-                    abs_prob[:batch_size],
-                    dim=1,
-                    index=max_indices,
-                ).squeeze(1)
+                ace_loss = F.nll_loss(abnorm_prob.log(), anomaly_ids)
                 
-                max_labels = F.one_hot(input_ids[:batch_size], num_classes=opt.classes)\
-                    .to(dtype=torch.float32, device=device)
-                
-                print(max_idx)
-                print(max_indices)
-                print(max_logits)
-                print(max_labels.shape, max_logits.shape)
-                
-                abnormal_cls_loss = class_criterion(max_logits, max_labels)
-                
-                print(abnormal_cls_loss)
-                
-                cls_loss = abnormal_cls_loss
+                cls_loss = ace_loss
                 
                 loss = loss + opt.alpha * amc_loss + opt.beta * cls_loss
-                print(loss)
 
                 
             optimizer.zero_grad()
