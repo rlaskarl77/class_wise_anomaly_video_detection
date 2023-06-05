@@ -77,8 +77,8 @@ def train(opt, device):
         model.load_state_dict(ckpt['model_state_dict'])
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         
-        best_auc, start_epoch, epochs = smart_resume(ckpt, optimizer, epochs)
-        del ckpt, csd
+        best_auc, last_epoch, epochs = smart_resume(ckpt, optimizer, epochs)
+        del ckpt
         
     cuda = device.type != 'cpu'
     # DDP mode
@@ -91,7 +91,7 @@ def train(opt, device):
 
     nb = len(normal_train_loader)
 
-    for epoch in range(0, opt.epoch):
+    for epoch in range(last_epoch, opt.epoch):
         
         pbar = enumerate(zip(normal_train_loader, anomaly_train_loader))
         

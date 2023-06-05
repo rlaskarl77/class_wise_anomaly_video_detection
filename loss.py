@@ -1,5 +1,6 @@
 import torch
-import torch.nn.functional as F
+import torch.nn as nn
+from torch.nn import functional as F
 
 def MIL(y_pred, batch_size, is_transformer=0):
     loss = torch.tensor(0.).cuda()
@@ -15,8 +16,8 @@ def MIL(y_pred, batch_size, is_transformer=0):
         anomaly_index = torch.randperm(30).cuda()
         normal_index = torch.randperm(30).cuda()
 
-        y_anomaly = y_pred[i, :32][anomaly_index]
-        y_normal  = y_pred[i, 32:][normal_index]
+        y_anomaly = y_pred[i, :32]
+        y_normal  = y_pred[i, 32:]
 
         y_anomaly_max = torch.max(y_anomaly) # anomaly
         y_anomaly_min = torch.min(y_anomaly)
@@ -33,16 +34,19 @@ def MIL(y_pred, batch_size, is_transformer=0):
     return loss
 
 
-def weaksup_intra_video_loss(amc_score, batch_size, k = 1, margin=0.5):
+def weaksup_intra_video_loss(amc_score, batch_size, k=1, margin=0.5):
     # assert len(pred.size()) == 2
     pred = amc_score.view(-1, 32)
-    abnorm_pred = pred[0:batch_size, :]
-    abnorm_min = abnorm_pred.topk(k=k, dim=-1, largest=False)[0][:, -1]
-    abnorm_max = abnorm_pred.topk(k=k, dim=-1)[0][:, -1]
+    abnorm_pred = pred[:batch_size, :]
+    normal_pred = pred[batch_size:, :]
+    norm_min, min_idx = normal_pred.topk(k=k, dim=-1, largest=False)
+    abnorm_max, max_idx = abnorm_pred.topk(k=k, dim=-1)
 
-    minmax_diff = (-abnorm_max + abnorm_min).view(-1)
+    minmax_diff = (-abnorm_max + norm_min).view(-1)
     hinge_loss = torch.max(torch.zeros_like(minmax_diff), margin + minmax_diff).sum()
-    return hinge_loss
+    
+    return hinge_loss, min_idx, max_idx
+
 
 def weaksup_intra_video_loss2(amc_score, abs_prob, anomaly_ids, batch_size, k = 1, margin=0.5):
     pred = amc_score.view(-1, 32)

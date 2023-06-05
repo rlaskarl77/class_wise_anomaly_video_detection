@@ -1,53 +1,69 @@
+from typing import Optional
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
 class Learner(nn.Module):
-    def __init__(self, input_dim=2048, drop_p=0.0, mode='amc'):
+    def __init__(self, 
+                 input_dim: int=2048, 
+                 drop_p: float=0.0, 
+                 mode: str='amc',
+                 num_classes: Optional[int]=None):
         super(Learner, self).__init__()
-        self.classifier = nn.Sequential(
+        
+        self.mode = mode
+        self.drop_p = drop_p
+        self.num_classes = num_classes
+        
+        self.body = nn.Sequential(
             nn.Linear(input_dim, 512),
             nn.ReLU(),
-            nn.Dropout(0.6),
+            nn.Dropout(drop_p),
             nn.Linear(512, 32),
             nn.ReLU(),
-            nn.Dropout(0.6),
-            nn.Linear(32, 1),
-            nn.Sigmoid()
         )
-        self.drop_p = 0.6
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(32, 32),
+            nn.SiLU(),
+            nn.Linear(32, 1),
+            nn.Sigmoid(),
+        )
+        
+        if self.mode=='ace':
+            self.cls_head = nn.Sequential(
+                nn.Linear(32, 32),
+                nn.SiLU(),
+                nn.Linear(32, self.num_classes),
+                nn.Sigmoid(),
+            )
+        
         self.weight_init()
-        self.vars = nn.ParameterList()
 
-        for i, param in enumerate(self.classifier.parameters()):
-            self.vars.append(param)
-
-        self.mode = mode
 
     def weight_init(self):
+        for layer in self.body:
+            if type(layer) == nn.Linear:
+                nn.init.xavier_normal_(layer.weight)
+                
         for layer in self.classifier:
             if type(layer) == nn.Linear:
                 nn.init.xavier_normal_(layer.weight)
+                
+        if self.mode=='ace':
+            for layer in self.cls_head:
+                if type(layer) == nn.Linear:
+                    nn.init.xavier_normal_(layer.weight)
 
-    def forward(self, x, vars=None):
-        if vars is None:
-            vars = self.vars
-        x = F.linear(x, vars[0], vars[1])
-        x = F.relu(x)
-        x = F.dropout(x, self.drop_p, training=self.training)
-        x = F.linear(x, vars[2], vars[3])
-        x = F.dropout(x, self.drop_p, training=self.training)
+
+    def forward(self, x):
+        x = self.body(x)
         fea = x
-        x = F.linear(x, vars[4], vars[5])
+        x = self.classifier(x)
+        
+        if self.mode=='ace':
+            cls_probs = self.cls_head(fea)
+            return x, fea, cls_probs
 
-
-        return torch.sigmoid(x), fea
-
-    def parameters(self):
-        """
-        override this function since initial parameters will return with a generator.
-        :return:
-        """
-        return self.vars
-
-
+        return x, fea
+    

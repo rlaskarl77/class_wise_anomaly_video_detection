@@ -7,6 +7,8 @@ import numpy as np
 import argparse
 
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 from sklearn import metrics, preprocessing
@@ -21,9 +23,9 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 import val as validate
 from general import de_parallel, increment_path, select_device, LOGGER, smart_DDP, smart_resume
 from learner import Learner
-from loss import *
-from dataset import *
-from utils import *
+from loss import MIL, weaksup_intra_video_loss
+from dataset import Anomaly_Loader, Normal_Loader
+from utils import get_amc_score, unstack_outputs
 
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
@@ -38,9 +40,6 @@ def train(opt, device):
     w = save_dir / 'weights'  # weights dir
     w.mkdir(parents=True, exist_ok=True)  # make dir
     last, best = w / 'last.pt', w / 'best.pt'
-    
-    train_loss = 0
-    mean = 0.0
 
     normal_train_dataset = Normal_Loader(is_train=1)
     normal_test_dataset = Normal_Loader(is_train=0)
@@ -54,7 +53,7 @@ def train(opt, device):
     anomaly_train_loader = DataLoader(anomaly_train_dataset, batch_size=30, shuffle=True, num_workers=workers) 
     anomaly_test_loader = DataLoader(anomaly_test_dataset, batch_size=1, shuffle=True, num_workers=workers)
     
-    model = Learner(input_dim=2048, drop_p=0.0, mode=opt.mode).to(device)
+    model = Learner(input_dim=2048, drop_p=opt.drop_p, mode=opt.mode, num_classes=opt.classes).to(device)
     
     if opt.optimizer == 'Adam':
         optimizer = torch.optim.Adam(model.parameters(), lr= opt.lr, betas=(opt.momentum, 0.999))  # adjust beta1 to momentum
@@ -75,8 +74,8 @@ def train(opt, device):
         model.load_state_dict(ckpt['model_state_dict'])
         optimizer.load_state_dict(ckpt['optimizer_state_dict'])
         
-        best_auc, start_epoch, epochs = smart_resume(ckpt, optimizer, epochs)
-        del ckpt, csd
+        best_auc, last_epoch, epochs = smart_resume(ckpt, optimizer, epochs)
+        del ckpt
         
     cuda = device.type != 'cpu'
     # DDP mode
@@ -86,12 +85,15 @@ def train(opt, device):
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[25, 50, 75, 100, 125], gamma=0.5)
     scheduler.last_epoch = last_epoch - 1
     criterion = MIL
-
+    class_criterion = nn.BCELoss()
     nb = len(normal_train_loader)
 
-    for epoch in range(0, opt.epoch):
+    for epoch in range(last_epoch, epochs):
         
         pbar = enumerate(zip(normal_train_loader, anomaly_train_loader))
+        
+        train_loss = 0
+        mean = 0.0
         
         if RANK in {-1, 0}:
             pbar = tqdm(pbar, total=nb, )
@@ -102,35 +104,69 @@ def train(opt, device):
             
             inputs = torch.cat([anomaly_inputs, normal_inputs], dim=1)
             input_ids = torch.cat([normal_ids, anomaly_ids], dim=0)
+
             batch_size = inputs.shape[0]
             inputs = inputs.view(-1, inputs.size(-1)).to(device)
-            outputs, fea = model(inputs)
+            input_ids = input_ids.to(device)
+            
+            if opt.mode=='ace':
+                outputs, fea, class_logits = model(inputs)
+            else:
+                outputs, fea = model(inputs)
+                
             loss = criterion(outputs, batch_size)
 
-            if opt.mode == 'amc':
-                outputs = outputs.view(batch_size, -1, outputs.size(-1)).to(device)
-                output1 = outputs[:, :32, :]
-                output2 = outputs[:, 32:, :]
-                outputs = torch.cat([output1, output2], dim=0)
+            if opt.mode=='amc':
+                outputs = unstack_outputs(outputs, batch_size)
+                fea = unstack_outputs(fea, batch_size)
 
-                fea = fea.view(batch_size, -1, fea.size(-1)).to(device)
-                fea1 = fea[:, :32, :]
-                fea2 = fea[:, 32:, :]
-                fea = torch.cat([fea1, fea2], dim=0)
-
-                amc_score, mean = get_amc_score(outputs, fea, mean)
-                amc_loss = weaksup_intra_video_loss(amc_score, batch_size, margin=0.5) * opt.alpha
-                loss = loss + amc_loss
+                amc_score, mean, _ = get_amc_score(outputs, fea, mean)
+                amc_loss, _, _ = weaksup_intra_video_loss(amc_score, batch_size, margin=0.5)
+                loss = loss + opt.alpha * amc_loss
                 
-            if RANK in {-1, 0}:
-                mloss = (mloss * batch_idx + loss.numpy()) / (batch_idx + 1) 
-                pbar.set_description(f'{epoch}/{epochs - 1}, loss: {mloss}')
+            elif opt.mode=='ace':
+                outputs = unstack_outputs(outputs, batch_size)
+                fea = unstack_outputs(fea, batch_size)
+                class_logits = unstack_outputs(class_logits, batch_size)
+
+                amc_score, mean, abs_prob = get_amc_score(outputs, fea, mean, class_logits)
+                
+                amc_loss, min_idx, max_idx = weaksup_intra_video_loss(amc_score, batch_size, margin=0.5)
+                max_indices = max_idx.unsqueeze(-1).detach().tile(1,1,opt.classes)
+                
+                max_logits = torch.gather(
+                    abs_prob[:batch_size],
+                    dim=1,
+                    index=max_indices,
+                ).squeeze(1)
+                
+                max_labels = F.one_hot(input_ids[:batch_size], num_classes=opt.classes)\
+                    .to(dtype=torch.float32, device=device)
+                
+                print(max_idx)
+                print(max_indices)
+                print(max_logits)
+                print(max_labels.shape, max_logits.shape)
+                
+                abnormal_cls_loss = class_criterion(max_logits, max_labels)
+                
+                print(abnormal_cls_loss)
+                
+                cls_loss = abnormal_cls_loss
+                
+                loss = loss + opt.alpha * amc_loss + opt.beta * cls_loss
+                print(loss)
+
                 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
-            
+                           
+            if RANK in {-1, 0}:
+                mloss = (mloss * batch_idx + loss.detach().cpu().numpy()) / (batch_idx + 1) 
+                pbar.set_description(f'{epoch+1}/{epochs}, loss: {mloss:.4E}')
+                 
         scheduler.step()
         epoch_loss =  train_loss / len(normal_train_loader)
     
@@ -156,7 +192,7 @@ def train(opt, device):
                 torch.save(ckpt, best)
             del ckpt
                 
-        LOGGER.info('Epoch: {}/{}  ||  loss = {},  auc = {}'.format(epoch, opt.epoch, epoch_loss, auc))
+        LOGGER.info(f'Epoch: {epoch+1}/{epochs}  ||  loss = {epoch_loss:.4E},  auc = {auc:.4E}')
     LOGGER.info("Best AUC is {}".format(best_auc))
 
     torch.cuda.empty_cache()
@@ -165,15 +201,18 @@ def train(opt, device):
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     # model configurations
-    parser.add_argument('--mode', type=str, help='amc or noamc', default='amc')
+    parser.add_argument('--mode', type=str, help='base, amc or ace', default='base')
     parser.add_argument('--ckpt', type=str, help='model checkpoint', default=None)
     parser.add_argument('--alpha', type=float, help='weighted sum of amc loss', default=0.1)
+    parser.add_argument('--beta', type=float, help='weighted sum of classification loss', default=0.1)
+    parser.add_argument('--drop-p', type=float, help='dropout possibility', default=0.3)
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs')
+    parser.add_argument('--classes', type=int, default=13, help='number of classes for classification')
         
     # optimizer
     parser.add_argument('--optimizer', type=str, choices=['SGD', 'Adam', 'AdamW'], default='SGD', help='optimizer')
     parser.add_argument('--lr', type=float, help='learning rate', default=0.01)
-    parser.add_argument('--epoch', type=int, help='# of Epoch', default=150)
+    parser.add_argument('--epochs', type=int, help='# of Epoch', default=150)
     parser.add_argument('--momentum', type=float, help='momentum', default=0.9)
     parser.add_argument('--weight-decay', type=float, help='weight decay rate', default=0.0010000000474974513)
     
@@ -204,8 +243,7 @@ def main(opt):
         dist.init_process_group(backend="nccl" if dist.is_nccl_available() else "gloo")
         
     # Train
-    if not opt.evolve:
-        train(opt, device)
+    train(opt, device)
         
 def run(**kwargs):
     opt = parse_opt(True)

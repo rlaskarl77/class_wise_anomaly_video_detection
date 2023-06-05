@@ -31,11 +31,11 @@ class Normal_Loader(Dataset):
         self.path = path
         self.class_ids = class_ids
         if self.is_train == 1:
-            data_list = os.path.join(path, 'train_normal.txt')
+            data_list = os.path.join('./DATA', 'train_normal.txt')
             with open(data_list, 'r') as f:
                 self.data_list = f.readlines()
         else:
-            data_list = os.path.join(path, 'test_normalv2.txt')
+            data_list = os.path.join('./DATA', 'test_normalv2.txt')
             with open(data_list, 'r') as f:
                 self.data_list = f.readlines()
             random.shuffle(self.data_list)
@@ -67,11 +67,11 @@ class Anomaly_Loader(Dataset):
         self.path = path
         self.class_ids = class_ids
         if self.is_train == 1:
-            data_list = os.path.join(path, 'train_anomaly.txt')
+            data_list = os.path.join('./DATA', 'train_anomaly.txt')
             with open(data_list, 'r') as f:
                 self.data_list = f.readlines()
         else:
-            data_list = os.path.join(path, 'test_anomalyv2.txt')
+            data_list = os.path.join('./DATA', 'test_anomalyv2.txt')
             with open(data_list, 'r') as f:
                 self.data_list = f.readlines()
 

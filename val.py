@@ -25,61 +25,6 @@ LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable
 RANK = int(os.getenv('RANK', -1))
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 
-@smart_inference_mode()
-def run2(opt, model, normal_test_loader, anomaly_test_loader):
-    
-    model.eval()
-    auc = 0
-    
-    for i, (data, data2) in enumerate(zip(anomaly_test_loader, normal_test_loader)):
-        
-        inputs, gts, frames = data
-        inputs = inputs.view(-1, inputs.size(-1)).to(torch.device('cuda'))
-        
-        score, fea, logit_ano = model(inputs)
-        
-        if opt.mode == 'amc_ace':
-            score = get_amc_score2(logit_ano.unsqueeze(0), fea.unsqueeze(0), mean=None)
-            score = score.squeeze().unsqueeze(1)
-            # score = m(score)
-        score = score.cpu().detach().numpy()
-        score_list = np.zeros(frames[0])
-        step = np.round(np.linspace(0, frames[0]//16, 33))
-
-        for j in range(32):
-            score_list[int(step[j])*16:(int(step[j+1]))*16] = score[j]
-
-        gt_list = np.zeros(frames[0])
-        for k in range(len(gts)//2):
-            s = gts[k*2]
-            e = min(gts[k*2+1], frames)
-            gt_list[s-1:e] = 1
-
-        inputs2, gts2, frames2 = data2
-        inputs2 = inputs2.view(-1, inputs2.size(-1)).to(torch.device('cuda'))
-        score2, fea2, logit_ano2 = model(inputs2)
-        
-        if opt.mode == 'amc_ace':
-            score2 = get_amc_score2(logit_ano2.unsqueeze(0), fea2.unsqueeze(0), mean=None)
-            score2 = score2.squeeze().unsqueeze(1)
-            # score2 = m(score2)
-        score2 = score2.cpu().detach().numpy()
-        score_list2 = np.zeros(frames2[0])
-        step2 = np.round(np.linspace(0, frames2[0]//16, 33))
-        
-        for kk in range(32):
-            score_list2[int(step2[kk])*16:(int(step2[kk+1]))*16] = score2[kk]
-        gt_list2 = np.zeros(frames2[0])
-        score_list3 = np.concatenate((score_list, score_list2), axis=0)
-        
-        if opt.mode == 'amc_ace':
-            score_list3 = (score_list3 - np.min(score_list3)) / (np.max(score_list3) - np.min(score_list3))
-
-        gt_list3 = np.concatenate((gt_list, gt_list2), axis=0)
-
-        fpr, tpr, _ = metrics.roc_curve(gt_list3, score_list3, pos_label=1)
-        auc += metrics.auc(fpr, tpr)
-    return auc / 140
 
 @smart_inference_mode()
 def run(opt, model, normal_test_loader, anomaly_test_loader):
@@ -92,10 +37,13 @@ def run(opt, model, normal_test_loader, anomaly_test_loader):
         inputs, gts, frames = data
         inputs = inputs.view(-1, inputs.size(-1)).to(torch.device('cuda'))
         
-        score, fea = model(inputs)
+        if opt.mode=='ace':
+            score, fea, _ = model(inputs)
+        else:
+            score,fea = model(inputs)
         
-        if opt.mode == 'amc':
-            score = get_amc_score(score.unsqueeze(0), fea.unsqueeze(0), mean=None)
+        if opt.mode=='amc' or opt.mode=='ace':
+            score, _, _ = get_amc_score(score.unsqueeze(0), fea.unsqueeze(0), mean=None)
             score = score.squeeze().unsqueeze(1)
             # score = m(score)
         score = score.cpu().detach().numpy()
@@ -113,10 +61,14 @@ def run(opt, model, normal_test_loader, anomaly_test_loader):
 
         inputs2, gts2, frames2 = data2
         inputs2 = inputs2.view(-1, inputs2.size(-1)).to(torch.device('cuda'))
-        score2, fea2 = model(inputs2)
         
-        if opt.mode == 'amc':
-            score2 = get_amc_score(score2.unsqueeze(0), fea2.unsqueeze(0), mean=None)
+        if opt.mode=='ace':
+            score2, fea2, _ = model(inputs2)
+        else:
+            score2, fea2 = model(inputs2)
+        
+        if opt.mode=='amc' or opt.mode=='ace':
+            score2, _, _ = get_amc_score(score2.unsqueeze(0), fea2.unsqueeze(0), mean=None)
             score2 = score2.squeeze().unsqueeze(1)
             # score2 = m(score2)
         score2 = score2.cpu().detach().numpy()
@@ -128,7 +80,7 @@ def run(opt, model, normal_test_loader, anomaly_test_loader):
         gt_list2 = np.zeros(frames2[0])
         score_list3 = np.concatenate((score_list, score_list2), axis=0)
         
-        if opt.mode == 'amc':
+        if opt.mode=='amc' or opt.mode=='ace':
             score_list3 = (score_list3 - np.min(score_list3)) / (np.max(score_list3) - np.min(score_list3))
 
         gt_list3 = np.concatenate((gt_list, gt_list2), axis=0)
