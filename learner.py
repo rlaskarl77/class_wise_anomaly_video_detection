@@ -17,11 +17,11 @@ class Learner(nn.Module):
         
         self.body = nn.Sequential(
             nn.Linear(input_dim, 512),
-            nn.BatchNorm1d(512),
+            # nn.InstanceNorm1d(512),
             nn.ReLU(),
             nn.Dropout(drop_p),
             nn.Linear(512, 32),
-            nn.BatchNorm1d(32),
+            # nn.InstanceNorm1d(32),
             nn.ReLU(),
         )
         

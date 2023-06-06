@@ -135,7 +135,13 @@ def train(opt, device):
                 amc_loss, abnorm_prob, norm_prob = weaksup_intra_video_loss(amc_score, batch_size, margin=0.5, abs_prob=abs_prob)
                 
                 ace_loss = F.nll_loss(abnorm_prob.log(), anomaly_ids)
+                # normal_ent = torch.distributions.Categorical(norm_prob).entropy()
+                # normal_info = (-normal_ent).exp().mean()
+                # normal_ent = torch.distributions.Categorical(norm_prob).entropy().sum()
+                # abnormal_ent = torch.distributions.Categorical(abnorm_prob).entropy().sum()
                 
+                # cls_loss = ace_loss - normal_ent + abnormal_ent
+                # cls_loss = ace_loss + normal_info
                 cls_loss = ace_loss
                 
                 loss = loss + opt.alpha * amc_loss + opt.beta * cls_loss
