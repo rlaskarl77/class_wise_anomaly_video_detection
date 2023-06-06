@@ -11,7 +11,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 from torch.utils.data import DataLoader
-from sklearn import metrics, preprocessing
 from tqdm import tqdm
 
 FILE = Path(__file__).resolve()
@@ -135,14 +134,14 @@ def train(opt, device):
                 amc_loss, abnorm_prob, norm_prob = weaksup_intra_video_loss(amc_score, batch_size, margin=0.5, abs_prob=abs_prob)
                 
                 ace_loss = F.nll_loss(abnorm_prob.log(), anomaly_ids)
-                # normal_ent = torch.distributions.Categorical(norm_prob).entropy()
-                # normal_info = (-normal_ent).exp().mean()
+                normal_ent = torch.distributions.Categorical(norm_prob).entropy()
+                normal_info = (-normal_ent).exp().mean()
                 # normal_ent = torch.distributions.Categorical(norm_prob).entropy().sum()
                 # abnormal_ent = torch.distributions.Categorical(abnorm_prob).entropy().sum()
                 
-                # cls_loss = ace_loss - normal_ent + abnormal_ent
-                # cls_loss = ace_loss + normal_info
                 cls_loss = ace_loss
+                # cls_loss = cls_loss - normal_ent
+                cls_loss = ace_loss + normal_info
                 
                 loss = loss + opt.alpha * amc_loss + opt.beta * cls_loss
 
@@ -190,13 +189,16 @@ def train(opt, device):
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     # model configurations
-    parser.add_argument('--mode', type=str, help='base, amc or ace', default='base')
+    parser.add_argument('--mode', type=str, help='base, amc or ace', 
+                        choices=['base', 'amc', 'ace'], default='base')
     parser.add_argument('--ckpt', type=str, help='model checkpoint', default=None)
     parser.add_argument('--alpha', type=float, help='weighted sum of amc loss', default=0.1)
     parser.add_argument('--beta', type=float, help='weighted sum of classification loss', default=0.1)
     parser.add_argument('--drop-p', type=float, help='dropout possibility', default=0.3)
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs')
     parser.add_argument('--classes', type=int, default=13, help='number of classes for classification')
+    parser.add_argument('--classification', type=str, help='classification loss for normal clips', 
+                        choices=['entropy', 'information', 'none'], default='entropy')
         
     # optimizer
     parser.add_argument('--optimizer', type=str, choices=['SGD', 'Adam', 'AdamW'], default='SGD', help='optimizer')
