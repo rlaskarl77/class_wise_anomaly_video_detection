@@ -92,18 +92,28 @@ def run(opt, model, normal_test_loader, anomaly_test_loader):
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     # model configurations
-    parser.add_argument('--mode', type=str, help='amc or noamc', default='amc')
+    parser.add_argument('--mode', type=str, help='base, amc or ace', 
+                        choices=['base', 'amc', 'ace'], default='base')
     parser.add_argument('--ckpt', type=str, help='model checkpoint', default=None)
     parser.add_argument('--alpha', type=float, help='weighted sum of amc loss', default=0.1)
+    parser.add_argument('--beta', type=float, help='weighted sum of classification loss', default=0.1)
+    parser.add_argument('--drop-p', type=float, help='dropout possibility', default=0.0)
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs')
+    parser.add_argument('--classes', type=int, default=13, help='number of classes for classification')
+    parser.add_argument('--classification', type=str, help='classification loss for normal clips', 
+                        choices=['entropy', 'information', 'none'], default='information')
         
     # optimizer
     parser.add_argument('--optimizer', type=str, choices=['SGD', 'Adam', 'AdamW'], default='SGD', help='optimizer')
     parser.add_argument('--lr', type=float, help='learning rate', default=0.01)
-    parser.add_argument('--epoch', type=int, help='# of Epoch', default=150)
+    parser.add_argument('--epochs', type=int, help='# of Epoch', default=150)
+    parser.add_argument('--momentum', type=float, help='momentum', default=0.9)
+    parser.add_argument('--weight-decay', type=float, help='weight decay rate', default=0.00001)
+    
     
     # device setting
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument('--workers', type=int, default=8, help='numnber or workers for dataloader')
     
     # checkpoint attributes
     parser.add_argument('--project', default=ROOT / 'runs/train', help='save to project/name')
