@@ -37,10 +37,13 @@ def run(opt, model, normal_test_loader, anomaly_test_loader):
         inputs, gts, frames = data
         inputs = inputs.view(-1, inputs.size(-1)).to(torch.device('cuda'))
         
-        score, fea = model(inputs)
+        if opt.mode=='ace':
+            score, fea, _ = model(inputs)
+        else:
+            score,fea = model(inputs)
         
-        if opt.mode == 'amc':
-            score = get_amc_score(score.unsqueeze(0), fea.unsqueeze(0), mean=None)
+        if opt.mode=='amc' or opt.mode=='ace':
+            score, _, _ = get_amc_score(score.unsqueeze(0), fea.unsqueeze(0), mean=None)
             score = score.squeeze().unsqueeze(1)
             # score = m(score)
         score = score.cpu().detach().numpy()
@@ -58,10 +61,14 @@ def run(opt, model, normal_test_loader, anomaly_test_loader):
 
         inputs2, gts2, frames2 = data2
         inputs2 = inputs2.view(-1, inputs2.size(-1)).to(torch.device('cuda'))
-        score2, fea2 = model(inputs2)
         
-        if opt.mode == 'amc':
-            score2 = get_amc_score(score2.unsqueeze(0), fea2.unsqueeze(0), mean=None)
+        if opt.mode=='ace':
+            score2, fea2, _ = model(inputs2)
+        else:
+            score2, fea2 = model(inputs2)
+        
+        if opt.mode=='amc' or opt.mode=='ace':
+            score2, _, _ = get_amc_score(score2.unsqueeze(0), fea2.unsqueeze(0), mean=None)
             score2 = score2.squeeze().unsqueeze(1)
             # score2 = m(score2)
         score2 = score2.cpu().detach().numpy()
@@ -73,7 +80,7 @@ def run(opt, model, normal_test_loader, anomaly_test_loader):
         gt_list2 = np.zeros(frames2[0])
         score_list3 = np.concatenate((score_list, score_list2), axis=0)
         
-        if opt.mode == 'amc':
+        if opt.mode=='amc' or opt.mode=='ace':
             score_list3 = (score_list3 - np.min(score_list3)) / (np.max(score_list3) - np.min(score_list3))
 
         gt_list3 = np.concatenate((gt_list, gt_list2), axis=0)
@@ -85,18 +92,28 @@ def run(opt, model, normal_test_loader, anomaly_test_loader):
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     # model configurations
-    parser.add_argument('--mode', type=str, help='amc or noamc', default='amc')
+    parser.add_argument('--mode', type=str, help='base, amc or ace', 
+                        choices=['base', 'amc', 'ace'], default='base')
     parser.add_argument('--ckpt', type=str, help='model checkpoint', default=None)
     parser.add_argument('--alpha', type=float, help='weighted sum of amc loss', default=0.1)
+    parser.add_argument('--beta', type=float, help='weighted sum of classification loss', default=0.1)
+    parser.add_argument('--drop-p', type=float, help='dropout possibility', default=0.0)
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs')
+    parser.add_argument('--classes', type=int, default=13, help='number of classes for classification')
+    parser.add_argument('--classification', type=str, help='classification loss for normal clips', 
+                        choices=['entropy', 'information', 'none'], default='information')
         
     # optimizer
     parser.add_argument('--optimizer', type=str, choices=['SGD', 'Adam', 'AdamW'], default='SGD', help='optimizer')
     parser.add_argument('--lr', type=float, help='learning rate', default=0.01)
-    parser.add_argument('--epoch', type=int, help='# of Epoch', default=150)
+    parser.add_argument('--epochs', type=int, help='# of Epoch', default=150)
+    parser.add_argument('--momentum', type=float, help='momentum', default=0.9)
+    parser.add_argument('--weight-decay', type=float, help='weight decay rate', default=0.00001)
+    
     
     # device setting
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument('--workers', type=int, default=8, help='numnber or workers for dataloader')
     
     # checkpoint attributes
     parser.add_argument('--project', default=ROOT / 'runs/train', help='save to project/name')

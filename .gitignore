@@ -11,3 +11,7 @@ DATA/UCF-Crime
 
 # original code
 original_code/
+
+# training
+runs/
+__pycache__

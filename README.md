@@ -1,8 +1,5 @@
 # Class-wise Anomaly Video Detection 
 
-This repository is a re-implementation of "Real-world Anomaly Detection in Surveillance Videos" with pytorch. As a result of our re-implementation, we achieved a much higher AUC than the [original implementation](https://github.com/WaqasSultani/AnomalyDetectionCVPR2018).
-
-
 ## Initial Setting
 1. git clone `this repository`
 2. conda env create -f vidan.yaml && conda activate vidan
@@ -14,9 +11,9 @@ This repository is a re-implementation of "Real-world Anomaly Detection in Surve
     DATA/
         UCF-Crime/ 
             ../all_rgbs
-                ../~.npy
+                ../*.npy
             ../all_flows
-                ../~.npy
+                ../*.npy
         train_anomaly.txt
         train_normal.txt
         test_anomaly.txt
@@ -24,26 +21,35 @@ This repository is a re-implementation of "Real-world Anomaly Detection in Surve
         
 ```
 
-## train-test script
+## train and test
 ```
-python main.py
+python -u train.py \
+  --mode ace \
+  --classification information \
+  --optimizer AdamW \
+  --lr 0.0025 \
+  --epochs 20 \
+  --classes 13
 ```
 
 ## Result
 
-| METHOD | DATASET | AUC | 
+| METHOD | DATASET | AUC (%) | 
 |:--------:|:--------:|:--------:|
-| Baseline (I3D two stream) | UCF-Crimes | 84.45 |
+| Baseline | UCF-Crimes | 84.45 |
+| Baseline + AMC | UCF-Crimes | 85.16 (+0.72) |
+| Baseline + AMC + ACE (ours) | UCF-Crimes | 85.36 (+0.92) |
 
-## Visualization
+## AUC plot
+![AUC plot](./result.png)
 
-<table>
-  <tr>
-    <td><img alt="" src="./sam.gif" /></td> <td><img alt="" src="./result.png" height="280" width="400" />
-  <tr>
-</table>
+## Live Demo
+
+![Demo](./sam.gif)
 
 ## Acknowledgment
 
-This code is heavily borrowed from [Learning to Adapt to Unseen Abnormal Activities under Weak Supervision](https://github.com/junha-kim/Learning-to-Adapt-to-Unseen-Abnormal-Activities) and [AnomalyDetectionCVPR2018](https://github.com/WaqasSultani/AnomalyDetectionCVPR2018).
 
+The baseline model code is based on the pytorch re-implementation of "Real-world Anomaly Detection in Surveillance Videos" from [github](https://github.com/seominseok0429/Real-world-Anomaly-Detection-in-Surveillance-Videos-pytorch).
+
+All the other codes excluding baseline model codes are implemented on our own.
